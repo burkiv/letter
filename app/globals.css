@@ -108,4 +108,51 @@ body {
 .bg-heart-pattern {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cpath fill='%23FFC0CB' fill-opacity='0.1' d='M25.5 25.5C33.5 15.5 42.5 10 50 10s16.5 5.5 24.5 15.5c9 10 13 19 13 29.5s-4 19.5-13 29.5c-9 10-18 15.5-24.5 15.5s-15.5-5.5-24.5-15.5c-9-10-13-19-13-29.5s4-19.5 13-29.5zm0 0L50 50l24.5-24.5'/%3E%3C/svg%3E");
   background-repeat: repeat;
+}
+
+/* Mektup stil tanımlamaları */
+.letter-page {
+  width: 100%;
+  max-width: 700px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-height: 500px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
+  font-family: inherit;
+}
+
+.letter-page:first-child {
+  margin-top: 0;
+}
+
+.letter-page:last-child {
+  margin-bottom: 0;
+}
+
+/* Pembe kalp süslemeler */
+.letter-page::before,
+.letter-page::after {
+  content: "❤";
+  position: absolute;
+  font-size: 2.5rem;
+  color: rgba(244, 114, 182, 0.2); /* Pembe renk, düşük opasite */
+  z-index: 5;
+}
+
+.letter-page::before {
+  top: 0.5rem;
+  left: 0.5rem;
+}
+
+.letter-page::after {
+  bottom: 0.5rem;
+  right: 0.5rem;
 } 

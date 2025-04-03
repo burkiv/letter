@@ -25,7 +25,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDbfqgX9NMUCVgU0_zbBJ2TQHWFKQHexl4",
   authDomain: "dijital-mektup.firebaseapp.com",
   projectId: "dijital-mektup",
-  storageBucket: "dijital-mektup.firebasestorage.app",
+  storageBucket: "dijital-mektup.appspot.com",
   messagingSenderId: "615516545800",
   appId: "1:615516545800:web:c17f55f6eadb129d4842bd"
 };
@@ -45,6 +45,8 @@ export interface LetterData {
   drawings?: any[];
   timestamp: number;
   title?: string;
+  from?: string; // Mektubu gönderen kişi
+  to?: string; // Mektubu alan kişi
   imageOverlay?: string; // Mektuba yüklenen fotoğraf
   [key: string]: any;
 }
@@ -55,6 +57,8 @@ export const saveLetter = async (letterData: {
   content: string[];
   theme: string;
   font?: string;
+  from?: string; // Gönderen kişi
+  to?: string; // Alıcı kişi
   stickers?: any[];
   drawings?: any[];
   imageOverlay?: string; // Yeni eklenen: fotoğraf base64 olarak

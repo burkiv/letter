@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import Image from 'next/image';
-import { Player } from '@lottiefiles/react-lottie-player';
-import { getThemeUrl } from '../utils/defaultThemes';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import LetterPage from './LetterPage';
+import LetterPage, { LetterPageHandle } from './LetterPage';
+import { usePathname } from 'next/navigation';
 
 interface LetterEditorProps {
   theme: string;
@@ -22,6 +20,7 @@ interface LetterEditorProps {
 export interface LetterEditorRefHandle {
   sendLottieAnimation: () => void;
   deleteLottieAnimation: (callback?: () => void) => void;
+  getAllPageContents: () => string[];
 }
 
 const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
@@ -37,7 +36,25 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lottieContainerRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<LetterPageHandle | null>(null);
+  const [isInitialRender, setIsInitialRender] = useState(true);
+  const pathname = usePathname();
   
+  // İlk render kontrolü
+  useEffect(() => {
+    // Component mount olduğunda bir kereliğine çalışır
+    if (isInitialRender && pathname === '/') {
+      console.log('LetterEditor: İlk render, sayfa içeriği temizleniyor');
+      setIsInitialRender(false);
+    }
+  }, [isInitialRender, pathname]);
+  
+  // Tüm sayfaların içeriklerini alma fonksiyonu
+  const getAllPageContents = () => {
+    // Doğrudan letters dizisini döndür - içerikler zaten burada güncel
+    return letters;
+  };
+
   // Lotties animasyonlarını oynatma fonksiyonları
   const playLottieAnimation = (animationUrl: string, container: HTMLDivElement | null, callback?: () => void) => {
     if (!container) return;
@@ -102,12 +119,16 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
   // ref ile animasyon fonksiyonlarını dışarı açma
   useImperativeHandle(ref, () => ({
     sendLottieAnimation,
-    deleteLottieAnimation
+    deleteLottieAnimation,
+    getAllPageContents
   }));
 
-  // Mektup içeriğini güncelleme fonksiyonu
-  const handleContentChange = (text: string) => {
-    onTextChange(text);
+  // Sayfa içeriğini güncelleme fonksiyonu
+  const handleContentChange = (newContent: string) => {
+    // Şu anki sayfa içeriğini güncelle ve ana bileşene bildir
+    const updatedLetters = [...letters];
+    updatedLetters[currentPage] = newContent;
+    onTextChange(updatedLetters[currentPage]);
   };
 
   // Sayfa dolduğunda çağrılacak fonksiyon
@@ -122,15 +143,19 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
       {/* Lottie animasyonları için konteyner */}
       <div ref={lottieContainerRef} className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center"></div>
       
-      {/* Aktif mektup sayfası */}
-      <LetterPage
-        content={letters[currentPage] || ''}
-        onChange={handleContentChange}
-        pageIndex={currentPage}
-        font={font}
-        theme={theme}
-        onFull={handlePageFull}
-      />
+      {/* Sadece aktif sayfayı render et - diğerleri DOM'da olmasın */}
+      <div className="relative">
+        <LetterPage
+          key={currentPage} // Sayfa değiştiğinde bileşeni yeniden oluştur
+          content={letters[currentPage]}
+          onChange={handleContentChange}
+          pageIndex={currentPage}
+          font={font}
+          theme={theme}
+          onFull={handlePageFull}
+          ref={pageRef}
+        />
+      </div>
       
       {/* Sayfa gezinme kontrolleri */}
       <div className="mt-4 flex items-center justify-center space-x-4">
