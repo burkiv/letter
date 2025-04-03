@@ -5,6 +5,9 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { usePathname } from 'next/navigation';
+import LoginButton from './components/LoginButton';
+import LogoutButton from './components/LogoutButton';
+import { useAuth } from './context/AuthContext';
 
 // Bileşenler
 import PageNavigation from './components/PageNavigation';
@@ -43,6 +46,13 @@ const AVAILABLE_FONTS = [
 ];
 
 export default function Home() {
+  // İkinizin UID'leri (Firebase Authentication'dan alınmış olacak)
+const USERS = {
+  burki: "9DWddtzxlaWX49QKF75AQ8raBG92",
+  yenge: "jcT79LR7A7hwE5xXxWZEk6gYf3n1"
+};
+
+  const { user, login, logout } = useAuth();
   const letterEditorRef = useRef<LetterEditorRefHandle>(null);
   const [activeTab, setActiveTab] = useState<string>('edit');
   const [customizeOpen, setCustomizeOpen] = useState<boolean>(false);
@@ -80,31 +90,38 @@ export default function Home() {
     }
   }, [pathname]); // Sadece pathname değiştiğinde tetiklensin
 
-  // Firebase'den mektupları yükle
-  useEffect(() => {
-    const loadLetters = async () => {
-      try {
-        // Editör dışı sekmelerde Firebase'den mektupları getir
-        if (activeTab !== 'edit') {
-          console.log(`${activeTab} sekmesi açıldı, mektuplar Firestore'dan yükleniyor...`);
-          const savedLetters = await getLetters();
-          
-          if (savedLetters && savedLetters.length > 0) {
-            // Mektupları "from" alanına göre filtrele
-            const sent = savedLetters.filter(letter => letter.from === "burki");
-            const received = savedLetters.filter(letter => letter.from !== "burki");
-            
-            setSentLetters(sent);
-            setReceivedLetters(received);
-          }
+// Firebase'den mektupları yükle (Giriş yapan kullanıcıya göre)
+useEffect(() => {
+  const loadLetters = async () => {
+    try {
+      // Kullanıcı giriş yapmadıysa işlem yapma
+      if (!user) return;
+
+      // Editör dışı sekmelerde Firebase'den mektupları getir
+      if (activeTab !== 'edit') {
+        console.log(`${activeTab} sekmesi açıldı, mektuplar Firestore'dan yükleniyor...`);
+
+        const savedLetters = await getLetters();
+
+        if (savedLetters && savedLetters.length > 0) {
+          // Mektupları kullanıcı UID'sine göre filtrele
+          const sent = savedLetters.filter(letter => letter.from === user.uid);
+          const received = savedLetters.filter(letter => letter.to === user.uid);
+
+          setSentLetters(sent);
+          setReceivedLetters(received);
+        } else {
+          setSentLetters([]);
+          setReceivedLetters([]);
         }
-      } catch (error) {
-        console.error("Mektuplar yüklenirken hata oluştu:", error);
       }
-    };
-    
-    loadLetters();
-  }, [activeTab]); // activeTab değiştiğinde tetiklensin
+    } catch (error) {
+      console.error("Mektuplar yüklenirken hata oluştu:", error);
+    }
+  };
+
+  loadLetters();
+}, [activeTab, user]); // activeTab veya kullanıcı değiştiğinde tetiklensin
 
   const handlePageChange = (pageIndex: number) => {
     if (pageIndex >= 0 && pageIndex < letters.length) {
@@ -251,43 +268,44 @@ export default function Home() {
   
   // Gönderme işlemi 
   const handleSendLetter = async () => {
+    if (!user) {
+      alert("Önce giriş yapmalısın!");
+      return;
+    }
+  
+    const recipientUid = user.uid === USERS.burki ? USERS.yenge : USERS.burki;
+  
     try {
-      // Tüm sayfaların içeriğini letters dizisinden al
       if (!letters || letters.length === 0 || letters.every(l => l === "" || l === "<p></p>")) {
         alert('İçerik alınamadı. Lütfen en az bir sayfa içeriği girin.');
         return;
       }
-
-      console.log(`Toplam ${letters.length} sayfa içeriği başarıyla toplandı.`);
-
-      // Mektup verilerini hazırla ve gönder
+  
       const letterId = await saveLetter({
-        title: "Burki'den Yenge'ye 💌",
-        content: letters.map(content => content || "<p></p>"), // Boş içerikler için <p></p> kullan
-        theme: currentTheme || "/images/paper1.jpeg", // fallback ekledik
+        title: user.uid === USERS.burki ? "Burki'den Yenge'ye 💌" : "Yenge'den Burki'ye 💌",
+        content: letters.map(content => content || "<p></p>"),
+        theme: currentTheme || "/images/paper1.jpeg",
         font: currentFont || "inherit",
-        from: "burki", // Gönderen kişi
-        to: "yenge", // Alıcı kişi
+        from: user.uid, // Gönderenin UID'si
+        to: recipientUid, // Karşı tarafın UID'si
         timestamp: Date.now(),
       });
-
+  
       alert("Mektup başarıyla gönderildi!");
       console.log("Gönderilen mektup ID:", letterId);
-      
-      // Yeni mektupları tekrar yükle
+  
       const savedLetters = await getLetters();
-      const sent = savedLetters.filter(letter => letter.from === "burki");
-      const received = savedLetters.filter(letter => letter.from !== "burki");
-      setSentLetters(sent);
-      setReceivedLetters(received);
-      
-      // Animasyonu oynat
+      setSentLetters(savedLetters.filter(letter => letter.from === user.uid));
+      setReceivedLetters(savedLetters.filter(letter => letter.to === user.uid));
+  
       letterEditorRef.current?.sendLottieAnimation();
     } catch (err) {
       console.error("HATA:", err);
       alert("Mesaj gönderilemedi, tekrar deneyin.");
     }
   };
+  
+  
 
   // Yükleme ekranı
   if (isLoading) {
@@ -310,46 +328,83 @@ export default function Home() {
       <FloatingHearts count={20} />
       
       <header className="bg-white shadow-sm py-3 mb-6 relative z-10">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-pink-500 flex items-center">
-            <span className="mr-2 animate-heartBeat">✉️</span> Mektup Uygulaması
-          </h1>
-          <div className="flex rounded-md overflow-hidden shadow-sm">
+  <div className="container mx-auto px-4 flex justify-between items-center">
+    <h1 className="text-2xl font-bold text-pink-500 flex items-center">
+      <span className="mr-2 animate-heartBeat">✉️</span> Mektup Uygulaması
+    </h1>
+
+    {user ? (
+  <div className="flex items-center gap-2">
+    <span className="text-gray-700 text-sm">Hoş geldin, {user.displayName || "Kullanıcı"}!</span>
+    <button onClick={logout} className="text-sm text-red-500 hover:underline">Çıkış Yap</button>
+  </div>
+) : (
+  <button onClick={login} className="text-sm text-blue-500 hover:underline">Giriş Yap</button>
+)}
+
+    <div className="flex items-center gap-4">
+      {/* Sekmeler */}
+      <div className="flex rounded-md overflow-hidden shadow-sm">
+        <button 
+          className={`px-4 py-2 ${activeTab === 'edit' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('edit')}
+        >
+          Editör
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'sent' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('sent')}
+        >
+          Gönderdiğim
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'received' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('received')}
+        >
+          Gelen
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'drafts' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('drafts')}
+        >
+          Taslaklar
+        </button>
+      </div>
+
+      {/* Giriş / Çıkış Butonları */}
+      <div className="ml-4">
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              👤 {user.displayName || 'Kullanıcı'}
+            </span>
             <button 
-              className={`px-4 py-2 ${activeTab === 'edit' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('edit')}
+              onClick={logout}
+              className="bg-pink-100 hover:bg-pink-200 text-pink-600 text-sm px-3 py-1 rounded-full transition-colors border border-pink-300"
             >
-              Editör
-            </button>
-            <button 
-              className={`px-4 py-2 ${activeTab === 'sent' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('sent')}
-            >
-              Gönderdiğim
-            </button>
-            <button 
-              className={`px-4 py-2 ${activeTab === 'received' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('received')}
-            >
-              Gelen
-            </button>
-            <button 
-              className={`px-4 py-2 ${activeTab === 'drafts' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('drafts')}
-            >
-              Taslaklar
+              Çıkış Yap
             </button>
           </div>
-        </div>
-      </header>
+        ) : (
+          <button 
+            onClick={login}
+            className="bg-pink-500 hover:bg-pink-600 text-white text-sm px-4 py-2 rounded-full transition-colors"
+          >
+            Giriş Yap
+          </button>
+        )}
+      </div>
+    </div>
+  </div>
+</header>
 
       <div className="container mx-auto px-4">
         {activeTab === 'edit' ? (
