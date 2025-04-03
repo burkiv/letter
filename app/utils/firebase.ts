@@ -22,12 +22,12 @@ import {
 
 // Firebase yapılandırma bilgileri
 const firebaseConfig = {
-  apiKey: "AIzaSyBc4G2qA7QFGCVXs5fJyDyRtbxkpYYKIoY",
-  authDomain: "letter-app-f1e8f.firebaseapp.com",
-  projectId: "letter-app-f1e8f",
-  storageBucket: "letter-app-f1e8f.appspot.com",
-  messagingSenderId: "1094785797811",
-  appId: "1:1094785797811:web:c4b79c7e937c1cb0ae8c43"
+  apiKey: "AIzaSyDbfqgX9NMUCVgU0_zbBJ2TQHWFKQHexl4",
+  authDomain: "dijital-mektup.firebaseapp.com",
+  projectId: "dijital-mektup",
+  storageBucket: "dijital-mektup.firebasestorage.app",
+  messagingSenderId: "615516545800",
+  appId: "1:615516545800:web:c17f55f6eadb129d4842bd"
 };
 
 // Firebase uygulamasını başlat
@@ -40,10 +40,12 @@ export interface LetterData {
   id: string;
   content: string[];
   theme: string;
+  font?: string;
   stickers?: any[];
   drawings?: any[];
   timestamp: number;
   title?: string;
+  imageOverlay?: string; // Mektuba yüklenen fotoğraf
   [key: string]: any;
 }
 
@@ -52,8 +54,10 @@ export const saveLetter = async (letterData: {
   title?: string;
   content: string[];
   theme: string;
+  font?: string;
   stickers?: any[];
   drawings?: any[];
+  imageOverlay?: string; // Yeni eklenen: fotoğraf base64 olarak
   timestamp?: number;
 }) => {
   try {
@@ -65,6 +69,21 @@ export const saveLetter = async (letterData: {
     
     // Firestore'a mektubu ekle
     const docRef = await addDoc(collection(db, "letters"), letterWithTimestamp);
+    
+    // Fotoğraf upload (varsa)
+    if (letterData.imageOverlay) {
+      // Base64 formatındaki görseli storage'a yükle
+      const storageRef = ref(storage, `images/${docRef.id}_overlay.png`);
+      await uploadString(storageRef, letterData.imageOverlay, 'data_url');
+      
+      // Yüklenen fotoğraf URL'ini al
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      // Mektubu güncellenmiş URL ile güncelle
+      await updateDoc(doc(db, "letters", docRef.id), {
+        imageOverlay: downloadURL
+      });
+    }
     
     // Çizimleri storage'a kaydet
     if (letterData.drawings && letterData.drawings.length > 0) {

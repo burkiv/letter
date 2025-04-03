@@ -220,12 +220,42 @@ export default function Home() {
   
   // Gönderme işlemi - şu an için kaydetme işlemi ile aynı
   const handleSendLetter = async () => {
-    // Gönderme animasyonunu oynat
-    if (letterEditorRef.current) {
-      letterEditorRef.current.sendLottieAnimation();
+    try {
+      const pages = document.querySelectorAll(".editable-page");
+      const contentArray: string[] = [];
+
+      if (pages.length > 0) {
+        pages.forEach((page) => {
+          contentArray.push(page.innerHTML.trim());
+        });
+      } else {
+        // Eğer .editable-page sınıfı yoksa, letters dizisini kullan
+        contentArray.push(...letters);
+      }
+
+      console.log("Mektup içeriği:", contentArray);
+
+      if (contentArray.length === 0 || contentArray.every(p => p === "")) {
+        alert("Mektup boş, gönderilemez.");
+        return;
+      }
+
+      const letterId = await saveLetter({
+        title: "Burki'den Yenge'ye 💌",
+        content: contentArray,
+        theme: currentTheme || "/images/paper1.jpeg", // fallback ekledik
+        font: currentFont || "inherit",
+        timestamp: Date.now(),
+      });
+
+      alert("Mektup gönderildi!");
+      console.log("Gönderilen mektup ID:", letterId);
       
-      // Mektubu kaydet
-      await saveToDraft();
+      // Animasyonu oynat
+      letterEditorRef.current?.sendLottieAnimation();
+    } catch (err) {
+      console.error("HATA:", err);
+      alert("Mesaj gönderilemedi, tekrar deneyin.");
     }
   };
 

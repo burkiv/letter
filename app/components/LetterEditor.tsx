@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { getThemeUrl } from '../utils/defaultThemes';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import LetterPage from './LetterPage';
 
 interface LetterEditorProps {
   theme: string;
@@ -34,7 +35,6 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
   onAddPage,
   stickers = [],
 }, ref) => {
-  const editorRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lottieContainerRef = useRef<HTMLDivElement>(null);
   
@@ -105,120 +105,71 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
     deleteLottieAnimation
   }));
 
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && letters[currentPage]) {
-      editor.value = letters[currentPage];
-    }
-  }, [currentPage, letters]);
+  // Mektup içeriğini güncelleme fonksiyonu
+  const handleContentChange = (text: string) => {
+    onTextChange(text);
+  };
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    // Karakter sınırını kontrol et
-    if (e.target.value.length <= 1150) {
-      onTextChange(e.target.value);
-    } else {
-      // Sınırı aşarsa, metni 1150 karaktere kırp
-      onTextChange(e.target.value.slice(0, 1150));
-      e.target.value = e.target.value.slice(0, 1150);
-    }
+  // Sayfa dolduğunda çağrılacak fonksiyon
+  const handlePageFull = () => {
+    // İsteğe bağlı: Sayfa dolduğunda otomatik olarak yeni sayfa eklemek için
+    // onAddPage() fonksiyonunu çağırabilirsiniz, ancak şu an için yalnızca bildirim gösteriyoruz
+    console.log('Sayfa doldu: Kullanıcının yeni sayfa eklemesi veya içeriği düzenlemesi gerekiyor');
   };
 
   return (
-    <div className={`w-full md:w-[420px] lg:w-[595px] h-[600px] md:h-[700px] lg:h-[842px] overflow-hidden rounded-md border border-gray-200 bg-white relative mx-auto`} ref={containerRef}>
-      {/* Arka plan teması */}
-      <div
-        className="absolute inset-0 bg-white"
-        style={{
-          backgroundImage: `url(${theme})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          opacity: 0.8,
-        }}
-      ></div>
-      
+    <div className="relative" ref={containerRef}>
       {/* Lottie animasyonları için konteyner */}
       <div ref={lottieContainerRef} className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center"></div>
       
-      {/* Metin alanı */}
-      <textarea
-        ref={editorRef}
-        className="w-full h-full p-8 bg-transparent text-lg resize-none focus:outline-none relative z-10"
-        placeholder="Mektubunu buraya yaz..."
-        value={letters[currentPage] || ''}
-        onChange={handleTextChange}
-        maxLength={1150}
-        style={{ fontFamily: font }}
+      {/* Aktif mektup sayfası */}
+      <LetterPage
+        content={letters[currentPage] || ''}
+        onChange={handleContentChange}
+        pageIndex={currentPage}
+        font={font}
+        theme={theme}
+        onFull={handlePageFull}
       />
       
-      {/* Karakter sayacı */}
-      <div className="absolute bottom-16 right-8 bg-white/80 px-2 py-1 rounded-md text-xs text-gray-600 z-40">
-        {letters[currentPage]?.length || 0}/1150
-      </div>
-      
-      {/* Stickerlar */}
-      {stickers && stickers.map((sticker) => (
-        <div
-          key={sticker.id}
-          className="absolute"
-          style={{
-            left: `${sticker.position.x}px`,
-            top: `${sticker.position.y}px`,
-            width: `${sticker.size}px`,
-            height: `${sticker.size}px`,
-            zIndex: 30,
-          }}
-        >
-          <Image
-            src={sticker.url}
-            alt="sticker"
-            width={sticker.size}
-            height={sticker.size}
-            className="w-full h-full object-contain pointer-events-none"
-          />
-        </div>
-      ))}
-      
-      {/* Sayfa numaralandırması */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-white/80 px-4 py-1 rounded-full shadow-sm z-40">
+      {/* Sayfa gezinme kontrolleri */}
+      <div className="mt-4 flex items-center justify-center space-x-4">
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 0}
-          className="text-pink-600 disabled:text-gray-400"
+          className="bg-white p-2 rounded-full shadow-md disabled:opacity-50 disabled:cursor-not-allowed text-pink-600 hover:bg-pink-50 transition-colors border border-pink-200"
         >
           <ChevronLeftIcon className="w-5 h-5" />
         </button>
-        <span className="text-xs font-medium">
+        
+        <span className="text-sm font-medium text-gray-700 bg-white px-3 py-1 rounded-full shadow-sm">
           Sayfa {currentPage + 1} / {totalPages}
         </span>
+        
         <button
-          onClick={() => {
-            if (currentPage === totalPages - 1) {
-              console.log('Yeni sayfa eklemek için onAddPage() çağrılıyor');
-              onAddPage();
-            } else {
-              console.log('Sonraki sayfaya geçiliyor:', currentPage + 1);
-              onPageChange(currentPage + 1);
-            }
-          }}
-          className="text-pink-600"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages - 1}
+          className="bg-white p-2 rounded-full shadow-md disabled:opacity-50 disabled:cursor-not-allowed text-pink-600 hover:bg-pink-50 transition-colors border border-pink-200"
         >
           <ChevronRightIcon className="w-5 h-5" />
         </button>
+        
+        {/* Yeni sayfa ekle butonu */}
+        <button
+          onClick={onAddPage}
+          className="bg-pink-500 text-white px-4 py-2 rounded-full shadow-md hover:bg-pink-600 transition-colors flex items-center"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          Yeni Sayfa
+        </button>
       </div>
       
-      {/* Yeni sayfa ekleme butonu */}
-      <button
-        onClick={() => {
-          console.log('Doğrudan yeni sayfa ekleme butonu tıklandı');
-          onAddPage();
-        }}
-        className="absolute bottom-4 right-4 bg-pink-100 hover:bg-pink-200 text-pink-800 w-8 h-8 rounded-full flex items-center justify-center"
-        title="Yeni sayfa ekle"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-        </svg>
-      </button>
+      {/* Karakter sayacı */}
+      <div className="mt-2 text-center text-xs text-gray-500">
+        Sayfa içeriği: {(letters[currentPage] || '').length} karakter
+      </div>
     </div>
   );
 });
