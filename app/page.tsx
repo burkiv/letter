@@ -4,6 +4,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { Player } from '@lottiefiles/react-lottie-player';
+import { usePathname } from 'next/navigation';
+import LoginButton from './components/LoginButton';
+import LogoutButton from './components/LogoutButton';
+import { useAuth } from './context/AuthContext';
 
 // Bileşenler
 import PageNavigation from './components/PageNavigation';
@@ -42,6 +46,13 @@ const AVAILABLE_FONTS = [
 ];
 
 export default function Home() {
+  // İkinizin UID'leri (Firebase Authentication'dan alınmış olacak)
+const USERS = {
+  burki: "9DWddtzxlaWX49QKF75AQ8raBG92",
+  yenge: "jcT79LR7A7hwE5xXxWZEk6gYf3n1"
+};
+
+  const { user, login, logout } = useAuth();
   const letterEditorRef = useRef<LetterEditorRefHandle>(null);
   const [activeTab, setActiveTab] = useState<string>('edit');
   const [customizeOpen, setCustomizeOpen] = useState<boolean>(false);
@@ -52,6 +63,10 @@ export default function Home() {
   const [drafts, setDrafts] = useState<DraftType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sentLetters, setSentLetters] = useState<LetterData[]>([]);
+  const [receivedLetters, setReceivedLetters] = useState<LetterData[]>([]);
+  const pathname = usePathname();
+  const [initialized, setInitialized] = useState(false);
 
   // Başlangıçta varsayılan temaları yükle
   useEffect(() => {
@@ -64,27 +79,49 @@ export default function Home() {
     loadThemes();
   }, []);
 
-  // Firebase'den mektupları yükle
+  // Sayfa yenilendiğinde veya ilk açıldığında içeriği sıfırla
   useEffect(() => {
-    const loadLetters = async () => {
-      try {
+    // Ana sayfadaysak (/) içeriği sıfırla
+    if (pathname === '/') {
+      console.log('Ana sayfa açıldı, editör içeriği sıfırlanıyor...');
+      // İçeriği sıfırla - tek boş sayfa ile başla
+      setLetters(['']);
+      setCurrentPage(0);
+    }
+  }, [pathname]); // Sadece pathname değiştiğinde tetiklensin
+
+// Firebase'den mektupları yükle (Giriş yapan kullanıcıya göre)
+useEffect(() => {
+  const loadLetters = async () => {
+    try {
+      // Kullanıcı giriş yapmadıysa işlem yapma
+      if (!user) return;
+
+      // Editör dışı sekmelerde Firebase'den mektupları getir
+      if (activeTab !== 'edit') {
+        console.log(`${activeTab} sekmesi açıldı, mektuplar Firestore'dan yükleniyor...`);
+
         const savedLetters = await getLetters();
+
         if (savedLetters && savedLetters.length > 0) {
-          // En son kaydedilen mektubu yükle
-          const lastLetter = savedLetters[0] as LetterData;
-          setLetters(lastLetter.content || []);
-          setCurrentTheme(lastLetter.theme || getThemeUrl('default'));
-          if (lastLetter.font) {
-            setCurrentFont(lastLetter.font);
-          }
+          // Mektupları kullanıcı UID'sine göre filtrele
+          const sent = savedLetters.filter(letter => letter.from === user.uid);
+          const received = savedLetters.filter(letter => letter.to === user.uid);
+
+          setSentLetters(sent);
+          setReceivedLetters(received);
+        } else {
+          setSentLetters([]);
+          setReceivedLetters([]);
         }
-      } catch (error) {
-        console.error("Mektuplar yüklenirken hata oluştu:", error);
       }
-    };
-    
-    loadLetters();
-  }, []);
+    } catch (error) {
+      console.error("Mektuplar yüklenirken hata oluştu:", error);
+    }
+  };
+
+  loadLetters();
+}, [activeTab, user]); // activeTab veya kullanıcı değiştiğinde tetiklensin
 
   const handlePageChange = (pageIndex: number) => {
     if (pageIndex >= 0 && pageIndex < letters.length) {
@@ -103,9 +140,10 @@ export default function Home() {
     console.log('Yeni sayfa eklendi:', letters.length + 1);
   };
 
-  const handleTextChange = (text: string) => {
+  const handleTextChange = (updatedPageContent: string) => {
+    // Şu anki sayfanın içeriğini güncelle
     const newLetters = [...letters];
-    newLetters[currentPage] = text;
+    newLetters[currentPage] = updatedPageContent;
     setLetters(newLetters);
   };
 
@@ -126,36 +164,22 @@ export default function Home() {
 
   const deletePage = () => {
     if (letters.length <= 1) {
-      // Son sayfayı silme, içeriği temizle
+      // Tek sayfa varsa sadece içeriği temizle
       setLetters(['']);
+      setCurrentPage(0);
       return;
     }
-    
-    try {
-      // Önce silme animasyonunu oynat
-      letterEditorRef.current?.deleteLottieAnimation(() => {
-        // Animasyon tamamlandıktan sonra sayfayı sil
-        const newLetters = [...letters];
-        newLetters.splice(currentPage, 1);
-        setLetters(newLetters);
-        
-        // Geçerli sayfayı güncelle
-        if (currentPage >= newLetters.length) {
-          setCurrentPage(newLetters.length - 1);
-        }
-      });
-    } catch (error) {
-      console.error("Sayfa silinemedi:", error);
-      
-      // Hata durumunda da sayfayı sil
-      const newLetters = [...letters];
-      newLetters.splice(currentPage, 1);
-      setLetters(newLetters);
-      
-      if (currentPage >= newLetters.length) {
-        setCurrentPage(newLetters.length - 1);
-      }
-    }
+
+    // Sayfayı sil
+    const newLetters = [...letters];
+    newLetters.splice(currentPage, 1);
+
+    // Sayfa numarasını güncelle
+    const newPage = currentPage >= newLetters.length ? newLetters.length - 1 : currentPage;
+
+    // State güncelle
+    setLetters(newLetters);
+    setCurrentPage(newPage);
   };
 
   const handleThemeChange = (theme: string) => {
@@ -203,31 +227,85 @@ export default function Home() {
     }
   };
   
-  // Silme işlemi için fonksiyon - şu an için sadece yerel silme
-  const handleDeleteLetter = async () => {
-    // Silme animasyonunu oynat
-    if (letterEditorRef.current) {
-      letterEditorRef.current.deleteLottieAnimation(async () => {
-        // Şu an için sadece resetleme yapıyoruz
-        // Firebase entegrasyonu ile gerçek silme işlemi eklenecek
-        setLetters(['']);
-        setCurrentPage(0);
-        setCurrentTheme(getThemeUrl('default'));
-        setCurrentFont('inherit');
-      });
+  // Silme işlemi için fonksiyon
+  const handleDeleteLetter = async (id?: string) => {
+    // Eğer ID verilmişse ilgili mektubu, verilmemişse aktif mektubu sil
+    if (id) {
+      // Kullanıcı onayı iste
+      if (!confirm("Bu mektubu silmek istediğinize emin misiniz?")) {
+        return; // Kullanıcı vazgeçti
+      }
+      
+      try {
+        // Firebase'den mektubu sil
+        await deleteLetter(id);
+        
+        // Mektupları tazele
+        const savedLetters = await getLetters();
+        const sent = savedLetters.filter(letter => letter.from === "burki");
+        const received = savedLetters.filter(letter => letter.from !== "burki");
+        setSentLetters(sent);
+        setReceivedLetters(received);
+        
+        alert("Mektup başarıyla silindi!");
+      } catch (error) {
+        console.error("Mektup silinemedi:", error);
+        alert("Mektup silinirken bir hata oluştu. Lütfen tekrar deneyin.");
+      }
+    } else {
+      // Editörde açık olan mektubu temizle
+      // Silme animasyonunu oynat
+      if (letterEditorRef.current) {
+        letterEditorRef.current.deleteLottieAnimation(async () => {
+          setLetters(['']);
+          setCurrentPage(0);
+          setCurrentTheme(getThemeUrl('default'));
+          setCurrentFont('inherit');
+        });
+      }
     }
   };
   
-  // Gönderme işlemi - şu an için kaydetme işlemi ile aynı
+  // Gönderme işlemi 
   const handleSendLetter = async () => {
-    // Gönderme animasyonunu oynat
-    if (letterEditorRef.current) {
-      letterEditorRef.current.sendLottieAnimation();
-      
-      // Mektubu kaydet
-      await saveToDraft();
+    if (!user) {
+      alert("Önce giriş yapmalısın!");
+      return;
+    }
+  
+    const recipientUid = user.uid === USERS.burki ? USERS.yenge : USERS.burki;
+  
+    try {
+      if (!letters || letters.length === 0 || letters.every(l => l === "" || l === "<p></p>")) {
+        alert('İçerik alınamadı. Lütfen en az bir sayfa içeriği girin.');
+        return;
+      }
+  
+      const letterId = await saveLetter({
+        title: user.uid === USERS.burki ? "Burki'den Yenge'ye 💌" : "Yenge'den Burki'ye 💌",
+        content: letters.map(content => content || "<p></p>"),
+        theme: currentTheme || "/images/paper1.jpeg",
+        font: currentFont || "inherit",
+        from: user.uid, // Gönderenin UID'si
+        to: recipientUid, // Karşı tarafın UID'si
+        timestamp: Date.now(),
+      });
+  
+      alert("Mektup başarıyla gönderildi!");
+      console.log("Gönderilen mektup ID:", letterId);
+  
+      const savedLetters = await getLetters();
+      setSentLetters(savedLetters.filter(letter => letter.from === user.uid));
+      setReceivedLetters(savedLetters.filter(letter => letter.to === user.uid));
+  
+      letterEditorRef.current?.sendLottieAnimation();
+    } catch (err) {
+      console.error("HATA:", err);
+      alert("Mesaj gönderilemedi, tekrar deneyin.");
     }
   };
+  
+  
 
   // Yükleme ekranı
   if (isLoading) {
@@ -250,30 +328,83 @@ export default function Home() {
       <FloatingHearts count={20} />
       
       <header className="bg-white shadow-sm py-3 mb-6 relative z-10">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-pink-500 flex items-center">
-            <span className="mr-2 animate-heartBeat">✉️</span> Mektup Uygulaması
-          </h1>
-          <div className="flex rounded-md overflow-hidden shadow-sm">
+  <div className="container mx-auto px-4 flex justify-between items-center">
+    <h1 className="text-2xl font-bold text-pink-500 flex items-center">
+      <span className="mr-2 animate-heartBeat">✉️</span> Mektup Uygulaması
+    </h1>
+
+    {user ? (
+  <div className="flex items-center gap-2">
+    <span className="text-gray-700 text-sm">Hoş geldin, {user.displayName || "Kullanıcı"}!</span>
+    <button onClick={logout} className="text-sm text-red-500 hover:underline">Çıkış Yap</button>
+  </div>
+) : (
+  <button onClick={login} className="text-sm text-blue-500 hover:underline">Giriş Yap</button>
+)}
+
+    <div className="flex items-center gap-4">
+      {/* Sekmeler */}
+      <div className="flex rounded-md overflow-hidden shadow-sm">
+        <button 
+          className={`px-4 py-2 ${activeTab === 'edit' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('edit')}
+        >
+          Editör
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'sent' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('sent')}
+        >
+          Gönderdiğim
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'received' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('received')}
+        >
+          Gelen
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'drafts' 
+            ? 'bg-pink-500 text-white' 
+            : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
+          onClick={() => setActiveTab('drafts')}
+        >
+          Taslaklar
+        </button>
+      </div>
+
+      {/* Giriş / Çıkış Butonları */}
+      <div className="ml-4">
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              👤 {user.displayName || 'Kullanıcı'}
+            </span>
             <button 
-              className={`px-4 py-2 ${activeTab === 'edit' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('edit')}
+              onClick={logout}
+              className="bg-pink-100 hover:bg-pink-200 text-pink-600 text-sm px-3 py-1 rounded-full transition-colors border border-pink-300"
             >
-              Editör
-            </button>
-            <button 
-              className={`px-4 py-2 ${activeTab === 'drafts' 
-                ? 'bg-pink-500 text-white' 
-                : 'bg-white text-gray-700 hover:bg-pink-50'} transition-colors focus:outline-none`}
-              onClick={() => setActiveTab('drafts')}
-            >
-              Taslaklar
+              Çıkış Yap
             </button>
           </div>
-        </div>
-      </header>
+        ) : (
+          <button 
+            onClick={login}
+            className="bg-pink-500 hover:bg-pink-600 text-white text-sm px-4 py-2 rounded-full transition-colors"
+          >
+            Giriş Yap
+          </button>
+        )}
+      </div>
+    </div>
+  </div>
+</header>
 
       <div className="container mx-auto px-4">
         {activeTab === 'edit' ? (
@@ -331,6 +462,134 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          </div>
+        ) : activeTab === 'sent' ? (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-pink-600 mb-6 flex items-center">
+              <span className="mr-2">📤</span> Gönderdiğim Mektuplar
+            </h2>
+            
+            {sentLetters.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-lg">Henüz gönderdiğin mektup yok.</p>
+                <p className="mt-2">Yeni bir mektup yazıp gönderebilirsin! 💌</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sentLetters.map((letter) => (
+                  <div key={letter.id} className="relative">
+                    <a 
+                      href={`/mektup/${letter.id}`}
+                      className="block group"
+                    >
+                      <div 
+                        className="h-48 border border-pink-200 rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform group-hover:scale-105 group-hover:-rotate-1 relative"
+                        style={{
+                          backgroundImage: `url(${letter.theme})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      >
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm p-4 flex flex-col">
+                          <h3 className="font-medium text-lg text-pink-600 mb-2">{letter.title || "Yenge'ye Mektup 💌"}</h3>
+                          <p className="text-gray-600 line-clamp-2 text-sm mb-2">
+                            {letter.content && letter.content[0] ? 
+                              letter.content[0].replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                              "Mektup içeriği yok..."
+                            }
+                          </p>
+                          <div className="mt-auto text-xs text-gray-500">
+                            {new Date(letter.timestamp).toLocaleDateString('tr-TR', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                          <div className="absolute top-2 right-2 bg-pink-500 text-white text-xs px-2 py-1 rounded-full">
+                            Gönderildi
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                    <button 
+                      onClick={() => handleDeleteLetter(letter.id)}
+                      className="absolute bottom-2 right-2 z-20 bg-red-500 text-white p-1 rounded-full shadow-sm hover:bg-red-600 transition-colors"
+                      title="Bu mektubu sil"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'received' ? (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-pink-600 mb-6 flex items-center">
+              <span className="mr-2">📩</span> Gelen Mektuplar
+            </h2>
+            
+            {receivedLetters.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-lg">Henüz gelen mektup yok.</p>
+                <p className="mt-2">Sana mektup geldiğinde burada görünecek! 💌</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {receivedLetters.map((letter) => (
+                  <div key={letter.id} className="relative">
+                    <a 
+                      href={`/mektup/${letter.id}`}
+                      className="block group"
+                    >
+                      <div 
+                        className="h-48 border border-pink-200 rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 transform group-hover:scale-105 group-hover:rotate-1 relative"
+                        style={{
+                          backgroundImage: `url(${letter.theme})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      >
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm p-4 flex flex-col">
+                          <h3 className="font-medium text-lg text-pink-600 mb-2">{letter.title || "Yenge'den Mektup 💌"}</h3>
+                          <p className="text-gray-600 line-clamp-2 text-sm mb-2">
+                            {letter.content && letter.content[0] ? 
+                              letter.content[0].replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                              "Mektup içeriği yok..."
+                            }
+                          </p>
+                          <div className="mt-auto text-xs text-gray-500">
+                            {new Date(letter.timestamp).toLocaleDateString('tr-TR', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                          <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                            Yeni
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                    <button 
+                      onClick={() => handleDeleteLetter(letter.id)}
+                      className="absolute bottom-2 right-2 z-20 bg-red-500 text-white p-1 rounded-full shadow-sm hover:bg-red-600 transition-colors"
+                      title="Bu mektubu sil"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-lg p-6">
@@ -470,10 +729,11 @@ export default function Home() {
       </button>
 
       <div className="fixed bottom-0 left-0 right-0 p-4 flex justify-between items-center bg-white/80 backdrop-blur-sm border-t border-pink-100 z-40">
-        <button 
-          onClick={handleDeleteLetter}
-          className="bg-white text-pink-600 px-4 py-2 rounded-full flex items-center gap-2 shadow-md hover:bg-pink-50 transition-colors border border-pink-200"
-        >
+      <button 
+  onClick={deletePage}
+  className="bg-white text-pink-600 px-4 py-2 rounded-full flex items-center gap-2 shadow-md hover:bg-pink-50 transition-colors border border-pink-200"
+>
+
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>

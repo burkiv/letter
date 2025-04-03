@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
+import { AuthProvider } from './context/AuthContext' // 💡 Giriş sistemi için
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -29,8 +30,11 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Dancing+Script&family=Pacifico&family=Playfair+Display&family=Poppins&family=Roboto+Slab&display=swap" rel="stylesheet" />
       </head>
       <body className={inter.className}>
-        {children}
+        {/* 🧠 Giriş sistemi burada devreye giriyor */}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   )
-} 
+}
