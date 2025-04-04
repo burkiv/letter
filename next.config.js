@@ -44,4 +44,3 @@ const nextConfig = {
   transpilePackages: ['react-lottie-player', '@lottiefiles/react-lottie-player'],
 };
 
-module.exports = withPWA(nextConfig); 

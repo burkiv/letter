@@ -1,0 +1,7 @@
+Örnek mektup kağıdı görselleri için bu klasöre aşağıdaki dosyaları ekleyin:
+
+- paper1.jpeg (Klasik mektup kağıdı)
+- paper2.jpeg (Vintage mektup kağıdı)
+- paper3.jpeg (Modern mektup kağıdı)
+
+Bu dosyalar mektup uygulamasının farklı kağıt stillerini göstermek için kullanılacaktır. 

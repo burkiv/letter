@@ -26,7 +26,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDbfqgX9NMUCVgU0_zbBJ2TQHWFKQHexl4",
   authDomain: "dijital-mektup.firebaseapp.com",
   projectId: "dijital-mektup",
-  storageBucket: "dijital-mektup.appspot.com",
+  storageBucket: "dijital-mektup.firebasestorage.app",
   messagingSenderId: "615516545800",
   appId: "1:615516545800:web:c17f55f6eadb129d4842bd"
 };
@@ -143,6 +143,18 @@ export const deleteLetter = async (letterId: string) => {
   } catch (error) {
     console.error("Mektup silinemedi:", error);
     throw error;
+  }
+};
+
+// Tüm mektup ID'lerini getirme (Yeni eklenen fonksiyon)
+export const getAllLetterIds = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "letters"));
+    const letterIds = querySnapshot.docs.map((doc) => doc.id);
+    return letterIds;
+  } catch (error) {
+    console.error("Mektup ID'leri getirilemedi:", error);
+    return [];
   }
 };
 
