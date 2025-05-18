@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import LetterPage, { LetterPageHandle } from './LetterPage';
+import LetterPage from './LetterPage';
 import { usePathname } from 'next/navigation';
 
 interface LetterEditorProps {
   theme: string;
   font: string;
+  color?: string;
   onPageChange: (pageIndex: number) => void;
   currentPage: number;
   totalPages: number;
@@ -15,6 +16,9 @@ interface LetterEditorProps {
   letters: string[];
   onAddPage: () => void;
   stickers?: { id: string; url: string; position: { x: number; y: number }; size: number }[];
+  pageSettings?: { [pageIndex: number]: { font?: string; paper?: string; color?: string } };
+  pageBackgrounds?: { [pageIndex: number]: string };
+  letterPageRef?: React.RefObject<HTMLDivElement>; // New prop to get the LetterPage DOM element
 }
 
 export interface LetterEditorRefHandle {
@@ -26,6 +30,7 @@ export interface LetterEditorRefHandle {
 const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
   theme,
   font,
+  color,
   onPageChange,
   currentPage,
   totalPages,
@@ -33,10 +38,12 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
   letters,
   onAddPage,
   stickers = [],
+  pageSettings = {},
+  pageBackgrounds = {},
+  letterPageRef, // Destructure the new prop
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lottieContainerRef = useRef<HTMLDivElement>(null);
-  const pageRef = useRef<LetterPageHandle | null>(null);
   const [isInitialRender, setIsInitialRender] = useState(true);
   const pathname = usePathname();
   
@@ -138,6 +145,9 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
     console.log('Sayfa doldu: Kullanıcının yeni sayfa eklemesi veya içeriği düzenlemesi gerekiyor');
   };
 
+  // Aktif sayfanın ayarlarını al
+  const settings = pageSettings[currentPage] || {};
+
   return (
     <div className="relative" ref={containerRef}>
       {/* Lottie animasyonları için konteyner */}
@@ -147,13 +157,14 @@ const LetterEditor = forwardRef<LetterEditorRefHandle, LetterEditorProps>(({
       <div className="relative">
         <LetterPage
           key={currentPage} // Sayfa değiştiğinde bileşeni yeniden oluştur
+          ref={letterPageRef} // Forward the ref to LetterPage
           content={letters[currentPage]}
           onChange={handleContentChange}
           pageIndex={currentPage}
-          font={font}
-          theme={theme}
+          font={settings.font || font}
+          theme={settings.paper || theme}
+          color={settings.color || color}
           onFull={handlePageFull}
-          ref={pageRef}
         />
       </div>
       

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { usePathname } from 'next/navigation';
+import html2canvas from 'html2canvas';
 import LoginButton from './components/LoginButton';
 import LogoutButton from './components/LogoutButton';
 import { useAuth } from './context/AuthContext';
@@ -54,6 +55,7 @@ const USERS = {
 
   const { user, login, logout } = useAuth();
   const letterEditorRef = useRef<LetterEditorRefHandle>(null);
+  const letterPageRef = useRef<HTMLDivElement>(null); // Ref for the current LetterPage DOM element
   const [activeTab, setActiveTab] = useState<string>('edit');
   const [customizeOpen, setCustomizeOpen] = useState<boolean>(false);
   const [currentTheme, setCurrentTheme] = useState<string>('/images/paper3.jpeg');
@@ -67,6 +69,9 @@ const USERS = {
   const [receivedLetters, setReceivedLetters] = useState<LetterData[]>([]);
   const pathname = usePathname();
   const [initialized, setInitialized] = useState(false);
+  const [pageBackgrounds, setPageBackgrounds] = useState<{ [pageIndex: number]: string }>({});
+  const [pageSettings, setPageSettings] = useState<{ [pageIndex: number]: { font: string; paper: string; color: string } }>({});
+  const [currentColor, setCurrentColor] = useState<string>("#222222");
 
   // Başlangıçta varsayılan temaları yükle
   useEffect(() => {
@@ -147,18 +152,29 @@ useEffect(() => {
     setLetters(newLetters);
   };
 
-  const saveDraft = () => {
+  // Mektubu Firebase'e kaydet (Taslak olarak)
+  const saveToDraft = async () => {
     try {
-      localStorage.setItem('letterDraft', JSON.stringify({
-        letters,
-        currentTheme,
-        font: currentFont
-      }));
+      // Mektup verilerini hazırla
+      const letterData = {
+        title: "Taslak Mektup", // Add a default title for drafts or make it dynamic
+        content: letters, // Array of HTML strings
+        pageSettings: pageSettings, // Pass the per-page settings object
+        theme: currentTheme, // Global/fallback theme
+        font: currentFont, // Global/fallback font
+        timestamp: Date.now(),
+        // from and to can be omitted for drafts or set to the current user if applicable
+      };
       
-      // Animasyonu oynat
-      letterEditorRef.current?.sendLottieAnimation();
+      // Firebase'e kaydet
+      const letterId = await saveLetter(letterData);
+      
+      // Başarılı mesajı göster
+      alert("Mektup taslak olarak başarıyla kaydedildi! ID: " + letterId);
+      letterEditorRef.current?.sendLottieAnimation(); // Play animation
     } catch (error) {
-      console.error("Taslak kaydedilemedi:", error);
+      console.error("Mektup taslak olarak kaydedilirken hata oluştu:", error);
+      alert("Mektup taslak olarak kaydedilemedi. Lütfen tekrar deneyin.");
     }
   };
 
@@ -205,28 +221,6 @@ useEffect(() => {
     reader.readAsDataURL(file);
   };
 
-  // Mektubu Firebase'e kaydet
-  const saveToDraft = async () => {
-    try {
-      // Mektup verilerini hazırla
-      const letterData = {
-        content: letters,
-        theme: currentTheme,
-        font: currentFont,
-        timestamp: Date.now()
-      };
-      
-      // Firebase'e kaydet
-      await saveLetter(letterData);
-      
-      // Başarılı mesajı göster
-      alert("Mektup başarıyla kaydedildi!");
-    } catch (error) {
-      console.error("Mektup kaydedilirken hata oluştu:", error);
-      alert("Mektup kaydedilemedi. Lütfen tekrar deneyin.");
-    }
-  };
-  
   // Silme işlemi için fonksiyon
   const handleDeleteLetter = async (id?: string) => {
     // Eğer ID verilmişse ilgili mektubu, verilmemişse aktif mektubu sil
@@ -276,16 +270,17 @@ useEffect(() => {
     const recipientUid = user.uid === USERS.burki ? USERS.yenge : USERS.burki;
   
     try {
-      if (!letters || letters.length === 0 || letters.every(l => l === "" || l === "<p></p>")) {
+      if (!letters || letters.length === 0 || letters.every(l => l.trim() === "" || l.trim() === "<p></p>")) {
         alert('İçerik alınamadı. Lütfen en az bir sayfa içeriği girin.');
         return;
       }
   
       const letterId = await saveLetter({
         title: user.uid === USERS.burki ? "Burki'den Yenge'ye 💌" : "Yenge'den Burki'ye 💌",
-        content: letters.map(content => content || "<p></p>"),
-        theme: currentTheme || "/images/paper1.jpeg",
-        font: currentFont || "inherit",
+        content: letters, // Pass the array of HTML strings
+        pageSettings: pageSettings, // Pass the per-page settings object
+        theme: currentTheme || "/images/paper1.jpeg", // Global/fallback theme
+        font: currentFont || "inherit", // Global/fallback font
         from: user.uid, // Gönderenin UID'si
         to: recipientUid, // Karşı tarafın UID'si
         timestamp: Date.now(),
@@ -304,8 +299,50 @@ useEffect(() => {
       alert("Mesaj gönderilemedi, tekrar deneyin.");
     }
   };
-  
-  
+
+  // Per-page customization handlers
+  const handlePageFontChange = (font: string) => {
+    setPageSettings(prev => ({
+      ...prev,
+      [currentPage]: {
+        ...(prev[currentPage] || { font: 'inherit', paper: '/images/paper3.jpeg', color: '#222222' }),
+        font
+      }
+    }));
+  };
+  const handlePagePaperChange = (paper: string) => {
+    setPageSettings(prev => ({
+      ...prev,
+      [currentPage]: {
+        ...(prev[currentPage] || { font: 'inherit', paper: '/images/paper3.jpeg', color: '#222222' }),
+        paper
+      }
+    }));
+  };
+  const handlePageColorChange = (color: string) => {
+    setCurrentColor(color);
+    setPageSettings(prev => ({
+      ...prev,
+      [currentPage]: {
+        ...(prev[currentPage] || { font: 'inherit', paper: '/images/paper3.jpeg', color: '#222222' }),
+        color
+      }
+    }));
+  };
+
+  // Özelleştirme modalında yapılan değişiklikleri sadece aktif sayfaya uygula
+  const handlePageSettingChange = (setting: Partial<{ font: string; paper: string; color: string }>) => {
+    setPageSettings(prev => ({
+      ...prev,
+      [currentPage]: {
+        ...prev[currentPage],
+        ...setting
+      }
+    }));
+  };
+
+  // Özelleştir modalındaki mevcut değerleri aktif sayfanın ayarlarından al
+  const currentPageSettings = pageSettings[currentPage] || {};
 
   // Yükleme ekranı
   if (isLoading) {
@@ -422,8 +459,11 @@ useEffect(() => {
               <div className="relative">
                 <LetterEditor
                   ref={letterEditorRef}
-                  theme={currentTheme}
-                  font={currentFont}
+                  letterPageRef={letterPageRef} // Pass the ref to LetterEditor
+                  theme={pageSettings[currentPage]?.paper || currentTheme}
+                  font={pageSettings[currentPage]?.font || currentFont}
+                  color={pageSettings[currentPage]?.color || currentColor}
+                  pageSettings={pageSettings}
                   onPageChange={handlePageChange}
                   currentPage={currentPage}
                   totalPages={letters.length}
@@ -431,6 +471,7 @@ useEffect(() => {
                   letters={letters}
                   onAddPage={handleAddPage}
                   stickers={[]}
+                  pageBackgrounds={pageBackgrounds}
                 />
                 
                 <div className="absolute -top-2 -left-2 z-20 flex space-x-2">
@@ -493,9 +534,11 @@ useEffect(() => {
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm p-4 flex flex-col">
                           <h3 className="font-medium text-lg text-pink-600 mb-2">{letter.title || "Yenge'ye Mektup 💌"}</h3>
                           <p className="text-gray-600 line-clamp-2 text-sm mb-2">
-                            {letter.content && letter.content[0] ? 
-                              letter.content[0].replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
-                              "Mektup içeriği yok..."
+                            {letter.content && letter.content[0] && typeof letter.content[0] === 'object' && letter.content[0].html ? 
+                              letter.content[0].html.replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                              (letter.content && letter.content[0] && typeof letter.content[0] === 'string' ? 
+                                (letter.content[0] as string).replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                                "Mektup içeriği yok...")
                             }
                           </p>
                           <div className="mt-auto text-xs text-gray-500">
@@ -557,9 +600,11 @@ useEffect(() => {
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm p-4 flex flex-col">
                           <h3 className="font-medium text-lg text-pink-600 mb-2">{letter.title || "Yenge'den Mektup 💌"}</h3>
                           <p className="text-gray-600 line-clamp-2 text-sm mb-2">
-                            {letter.content && letter.content[0] ? 
-                              letter.content[0].replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
-                              "Mektup içeriği yok..."
+                            {letter.content && letter.content[0] && typeof letter.content[0] === 'object' && letter.content[0].html ? 
+                              letter.content[0].html.replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                              (letter.content && letter.content[0] && typeof letter.content[0] === 'string' ? 
+                                (letter.content[0] as string).replace(/<[^>]*>/g, '').slice(0, 80) + "..." : 
+                                "Mektup içeriği yok...")
                             }
                           </p>
                           <div className="mt-auto text-xs text-gray-500">
@@ -614,28 +659,27 @@ useEffect(() => {
           <div className="bg-white shadow-lg rounded-lg overflow-hidden border border-pink-100">
             <div className="p-4">
               <h3 className="text-lg font-medium text-gray-800 mb-2 flex justify-between items-center">
-                <span>Mektup Özelleştir</span>
+                <span>Mektup Özelleştir (Sayfa {currentPage + 1})</span>
                 <button 
                   onClick={() => setCustomizeOpen(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
               </h3>
-              
               <div className="space-y-4">
                 {/* Yazı Fontu Seçimi */}
                 <div className="border-b border-gray-100 pb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Yazı Fontu</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Yazı Fontu (Bu sayfa)</h4>
                   <div className="flex flex-wrap gap-2">
                     {AVAILABLE_FONTS.map((font) => (
                       <button
                         key={font.value}
-                        onClick={() => handleFontChange(font.value)}
+                        onClick={() => handlePageFontChange(font.value)}
                         className={`px-3 py-2 rounded text-sm ${
-                          currentFont === font.value 
+                          (pageSettings[currentPage]?.font || currentFont) === font.value 
                             ? 'bg-pink-100 text-pink-800 border border-pink-300' 
                             : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
                         }`}
@@ -646,71 +690,71 @@ useEffect(() => {
                     ))}
                   </div>
                 </div>
-                
                 {/* Tema Seçimi */}
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Mektup Kağıdı</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Mektup Kağıdı (Bu sayfa)</h4>
                   <div className="grid grid-cols-3 gap-2">
-                    <button
-                      className={`h-16 border-2 rounded overflow-hidden ${
-                        currentTheme === "/images/paper1.jpeg" ? "border-pink-500" : "border-transparent"
-                      }`}
-                      onClick={() => handleThemeChange("/images/paper1.jpeg")}
-                    >
-                      <img
-                        src="/images/paper1.jpeg"
-                        alt="Kağıt 1"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                    <button
-                      className={`h-16 border-2 rounded overflow-hidden ${
-                        currentTheme === "/images/paper2.jpeg" ? "border-pink-500" : "border-transparent"
-                      }`}
-                      onClick={() => handleThemeChange("/images/paper2.jpeg")}
-                    >
-                      <img
-                        src="/images/paper2.jpeg"
-                        alt="Kağıt 2"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                    <button
-                      className={`h-16 border-2 rounded overflow-hidden ${
-                        currentTheme === "/images/paper3.jpeg" ? "border-pink-500" : "border-transparent"
-                      }`}
-                      onClick={() => handleThemeChange("/images/paper3.jpeg")}
-                    >
-                      <img
-                        src="/images/paper3.jpeg"
-                        alt="Kağıt 3"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
+                    {["/images/paper1.jpeg", "/images/paper2.jpeg", "/images/paper3.jpeg"].map((img) => (
+                      <button
+                        key={img}
+                        className={`h-16 border-2 rounded overflow-hidden ${
+                          (pageSettings[currentPage]?.paper || currentTheme) === img ? "border-pink-500" : "border-transparent"
+                        }`}
+                        onClick={() => handlePagePaperChange(img)}
+                      >
+                        <img
+                          src={img}
+                          alt={"Kağıt"}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    ))}
                   </div>
                 </div>
-                
                 {/* Kendi kağıdını yükle */}
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Kendi Kağıdını Yükle</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Kendi Kağıdını Yükle (Bu sayfa)</h4>
                   <div className="flex flex-col space-y-2">
                     <input 
                       type="file" 
                       accept="image/*" 
                       className="hidden" 
                       ref={fileInputRef} 
-                      onChange={uploadCustomTheme}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          if (event.target?.result) {
+                            const imageUrl = event.target.result.toString();
+                            handlePagePaperChange(imageUrl);
+                            setCustomizeOpen(false);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="w-full py-2 px-4 bg-pink-100 hover:bg-pink-200 text-pink-800 rounded-md text-sm font-medium transition-colors flex items-center justify-center"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                       Resim Yükle
                     </button>
                   </div>
+                </div>
+                {/* Yazı Rengi Seçimi */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Yazı Rengi (Bu sayfa)</h4>
+                  <input
+                    type="color"
+                    value={pageSettings[currentPage]?.color || currentColor}
+                    onChange={e => handlePageColorChange(e.target.value)}
+                    className="w-10 h-10 p-0 border-2 border-pink-200 rounded-full cursor-pointer"
+                    title="Yazı rengi seç"
+                  />
                 </div>
               </div>
             </div>
@@ -739,7 +783,6 @@ useEffect(() => {
           </svg>
           Sil
         </button>
-        
         <div className="flex gap-4">
           <button 
             onClick={saveToDraft}
@@ -764,4 +807,4 @@ useEffect(() => {
       </div>
     </div>
   );
-} 
+}
