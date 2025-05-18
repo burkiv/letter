@@ -12,14 +12,12 @@ const nextConfig = {
     styledComponents: true,
   },
   webpack: (config, { isServer }) => {
-    // Lottie animasyonları için JSON dosyalarını işleme
     config.module.rules.push({
       test: /\.(json)$/,
       type: 'javascript/auto',
       use: 'json-loader',
     });
 
-    // Firebase ve gRPC hataları için node modüllerini polyfill et
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -43,4 +41,6 @@ const nextConfig = {
   },
   transpilePackages: ['react-lottie-player', '@lottiefiles/react-lottie-player'],
 };
+
+module.exports = withPWA(nextConfig);
 

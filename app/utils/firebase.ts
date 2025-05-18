@@ -41,9 +41,9 @@ const provider = new GoogleAuthProvider();
 // Mektup veri tipi tanımı
 export interface LetterData {
   id: string;
-  content: string[];
-  theme: string;
-  font?: string;
+  content: Array<{ html: string; font: string; theme: string; color?: string }>; // New structure
+  theme: string; // Global/fallback theme
+  font?: string; // Global/fallback font
   stickers?: any[];
   drawings?: any[];
   timestamp: number;
@@ -57,9 +57,10 @@ export interface LetterData {
 // Mektupları kaydetme fonksiyonu (Güncellendi!)
 export const saveLetter = async (letterData: {
   title?: string;
-  content: string[];
-  theme: string;
-  font?: string;
+  content: string[]; // Array of HTML strings for each page
+  pageSettings: { [pageIndex: number]: { font: string; paper: string; color: string } }; // New: per-page settings
+  theme: string; // Global/fallback theme string
+  font?: string; // Global/fallback font string
   from?: string;
   to?: string;
   stickers?: any[];
@@ -68,43 +69,88 @@ export const saveLetter = async (letterData: {
   timestamp?: number;
 }) => {
   try {
-    const { theme, ...dataWithoutTheme } = letterData;
+    const {
+      content: letterHtmls,
+      pageSettings,
+      theme: globalThemeInput,
+      font: globalFontInput,
+      imageOverlay: imageOverlayInput,
+      drawings: drawingsInput,
+      ...coreData
+    } = letterData;
 
+    // 1. Add initial document to get an ID.
     const docRef = await addDoc(collection(db, "letters"), {
-      ...dataWithoutTheme,
-      timestamp: letterData.timestamp || Date.now()
+      ...coreData,
+      font: globalFontInput, // Store the global/fallback font
+      timestamp: letterData.timestamp || Date.now(),
+      // theme and content will be set in subsequent updateDoc calls
     });
 
-    let themeUrl = theme;
-    if (theme.startsWith("data:")) {
-      const themeRef = ref(storage, `themes/${docRef.id}_theme.png`);
-      await uploadString(themeRef, theme, 'data_url');
-      themeUrl = await getDownloadURL(themeRef);
+    // 2. Process and upload globalThemeInput if it's a data URL
+    let finalGlobalThemeUrl = globalThemeInput;
+    if (globalThemeInput && globalThemeInput.startsWith("data:")) {
+      const globalThemeRef = ref(storage, `themes/${docRef.id}_global_theme.png`);
+      await uploadString(globalThemeRef, globalThemeInput, 'data_url');
+      finalGlobalThemeUrl = await getDownloadURL(globalThemeRef);
     }
-
+    // Update the document with the final global theme URL
     await updateDoc(doc(db, "letters", docRef.id), {
-      theme: themeUrl
+      theme: finalGlobalThemeUrl
     });
 
-    if (letterData.imageOverlay) {
-      const storageRef = ref(storage, `images/${docRef.id}_overlay.png`);
-      await uploadString(storageRef, letterData.imageOverlay, 'data_url');
-      const downloadURL = await getDownloadURL(storageRef);
+    // 3. Process page-specific themes and construct the 'content' array for Firestore
+    const processedContent = await Promise.all(
+      letterHtmls.map(async (html, index) => {
+        const settings = pageSettings[index] || {};
+        let pageSpecificThemeUrl = settings.paper || finalGlobalThemeUrl;
+
+        if (settings.paper && settings.paper.startsWith("data:")) {
+          const pageThemeRef = ref(storage, `themes/${docRef.id}_page_${index}_theme.png`);
+          await uploadString(pageThemeRef, settings.paper, 'data_url');
+          pageSpecificThemeUrl = await getDownloadURL(pageThemeRef);
+        }
+
+        return {
+          html: html || "<p></p>",
+          font: settings.font || globalFontInput || 'inherit',
+          theme: pageSpecificThemeUrl,
+          color: settings.color || '#222222', // Default page text color
+        };
+      })
+    );
+
+    // Update the document with the fully processed content array
+    await updateDoc(doc(db, "letters", docRef.id), {
+      content: processedContent
+    });
+
+    // 4. Handle imageOverlay (if it's a data URL)
+    if (imageOverlayInput) {
+      let finalImageOverlayUrl = imageOverlayInput;
+      if (imageOverlayInput.startsWith("data:")) {
+        const overlayStorageRef = ref(storage, `images/${docRef.id}_overlay.png`);
+        await uploadString(overlayStorageRef, imageOverlayInput, 'data_url');
+        finalImageOverlayUrl = await getDownloadURL(overlayStorageRef);
+      }
       await updateDoc(doc(db, "letters", docRef.id), {
-        imageOverlay: downloadURL
+        imageOverlay: finalImageOverlayUrl
       });
     }
 
-    if (letterData.drawings && letterData.drawings.length > 0) {
+    // 5. Handle drawings (if they are data URLs)
+    if (drawingsInput && drawingsInput.length > 0) {
       const updatedDrawings = await Promise.all(
-        letterData.drawings.map(async (drawing, index) => {
-          const storageRef = ref(storage, `drawings/${docRef.id}_${index}.png`);
-          await uploadString(storageRef, drawing.url, 'data_url');
-          const downloadURL = await getDownloadURL(storageRef);
-          return { ...drawing, url: downloadURL };
+        drawingsInput.map(async (drawing, idx) => {
+          if (drawing.url && drawing.url.startsWith("data:")) {
+            const drawingStorageRef = ref(storage, `drawings/${docRef.id}_drawing_${idx}.png`);
+            await uploadString(drawingStorageRef, drawing.url, 'data_url');
+            const drawingDownloadURL = await getDownloadURL(drawingStorageRef);
+            return { ...drawing, url: drawingDownloadURL };
+          }
+          return drawing;
         })
       );
-
       await updateDoc(doc(db, "letters", docRef.id), { drawings: updatedDrawings });
     }
 
